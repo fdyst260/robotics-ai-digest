@@ -32,3 +32,19 @@ pytest
 python -m robotics_ai_digest --help
 python -m robotics_ai_digest version
 ```
+
+## Run In One Command (Windows)
+
+```powershell
+.\scripts\run_digest.ps1 -Rss "https://feeds.bbci.co.uk/news/technology/rss.xml"
+```
+
+Options:
+
+```powershell
+.\scripts\run_digest.ps1 `
+  -Rss "https://feeds.bbci.co.uk/news/technology/rss.xml","https://hnrss.org/frontpage" `
+  -DbPath "data/digest.db" `
+  -Limit 15 `
+  -Source "BBC News - Technology"
+```
