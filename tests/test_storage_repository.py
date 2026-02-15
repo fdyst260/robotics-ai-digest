@@ -2,7 +2,13 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
 from robotics_ai_digest.storage.models import Article, Base
-from robotics_ai_digest.storage.repository import get_recent_articles, upsert_articles
+from datetime import date
+
+from robotics_ai_digest.storage.repository import (
+    get_articles_for_date,
+    get_recent_articles,
+    upsert_articles,
+)
 
 
 def test_upsert_articles_does_not_insert_duplicate():
@@ -108,3 +114,43 @@ def test_get_recent_articles_filters_by_source():
 
     assert len(only_a) == 1
     assert only_a[0].title == "From A"
+
+
+def test_get_articles_for_date_returns_only_matching_published_day():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, future=True)
+
+    articles = [
+        {
+            "title": "Target date",
+            "link": "https://example.com/target",
+            "guid": "g-target",
+            "published": "2025-02-10T08:00:00+00:00",
+            "summary": "target",
+            "source": "Feed A",
+        },
+        {
+            "title": "Other date",
+            "link": "https://example.com/other",
+            "guid": "g-other",
+            "published": "2025-02-11T08:00:00+00:00",
+            "summary": "other",
+            "source": "Feed A",
+        },
+        {
+            "title": "No published",
+            "link": "https://example.com/none",
+            "guid": "g-none",
+            "published": None,
+            "summary": "none",
+            "source": "Feed A",
+        },
+    ]
+
+    with session_factory() as session:
+        upsert_articles(session, articles)
+        selected = get_articles_for_date(session, date(2025, 2, 10))
+
+    assert len(selected) == 1
+    assert selected[0].title == "Target date"

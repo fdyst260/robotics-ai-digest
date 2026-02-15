@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import func, select
@@ -67,4 +67,14 @@ def get_recent_articles(
     if source:
         stmt = stmt.where(Article.source == source)
     stmt = stmt.order_by(func.coalesce(Article.published, Article.created_at).desc()).limit(limit)
+    return list(session.scalars(stmt).all())
+
+
+def get_articles_for_date(session: Session, date: date) -> list[Article]:
+    stmt = (
+        select(Article)
+        .where(Article.published.is_not(None))
+        .where(func.date(Article.published) == date.isoformat())
+        .order_by(Article.published.desc(), Article.created_at.desc())
+    )
     return list(session.scalars(stmt).all())

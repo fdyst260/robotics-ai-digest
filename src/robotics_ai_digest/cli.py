@@ -1,11 +1,13 @@
 import argparse
 from collections import OrderedDict
+from datetime import date
 from pathlib import Path
 
 from . import __version__
+from .digest.renderer_md import render_digest
 from .feeds.rss_reader import fetch_rss
 from .storage.db import init_db
-from .storage.repository import get_recent_articles, upsert_articles
+from .storage.repository import get_articles_for_date, get_recent_articles, upsert_articles
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +32,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--rss", nargs="+", required=True, help="RSS feed URLs")
     run_parser.add_argument("--limit", type=int, default=10, help="Maximum number of articles to show")
     run_parser.add_argument("--source", default=None, help="Filter by source name")
+    digest_parser = subparsers.add_parser("digest", help="Generate markdown digest for a given date")
+    digest_parser.add_argument("--db", required=True, help="Path to SQLite database")
+    digest_parser.add_argument("--date", required=True, help="Date in YYYY-MM-DD format")
+    digest_parser.add_argument("--out", required=True, help="Output directory for markdown digest")
 
     return parser
 
@@ -88,6 +94,27 @@ def handler_run(args: argparse.Namespace) -> int:
     return handler_list(args)
 
 
+def handler_digest(args: argparse.Namespace) -> int:
+    try:
+        target_date = date.fromisoformat(args.date)
+    except ValueError:
+        print("Invalid date format. Use YYYY-MM-DD.")
+        return 1
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    session_factory = init_db(args.db)
+    with session_factory() as session:
+        articles = get_articles_for_date(session, target_date)
+
+    content = render_digest(target_date, articles)
+    output_path = out_dir / f"digest_{target_date.isoformat()}.md"
+    output_path.write_text(content, encoding="utf-8")
+    print(str(output_path))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -107,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
         return handler_list(args)
     if args.command == "run":
         return handler_run(args)
+    if args.command == "digest":
+        return handler_digest(args)
 
     parser.print_help()
     return 0
