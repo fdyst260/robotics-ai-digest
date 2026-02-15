@@ -12,7 +12,10 @@ license = { text = "MIT" }
 authors = [
   { name = "Your Name" }
 ]
-dependencies = []
+dependencies = [
+  "feedparser>=6.0.0",
+  "requests>=2.31.0"
+]
 
 [project.optional-dependencies]
 dev = [
