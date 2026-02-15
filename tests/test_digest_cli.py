@@ -39,5 +39,6 @@ def test_digest_command_creates_markdown_file(tmp_path):
     assert exit_code == 0
     assert output_file.exists()
     content = output_file.read_text(encoding="utf-8")
-    assert "# Robotics & AI Digest — 2025-02-10" in content
+    assert "# Robotics & AI Digest \u2014 2025-02-10" in content
     assert "## Digest Source" in content
+

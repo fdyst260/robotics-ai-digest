@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from robotics_ai_digest.storage.models import Article
 
@@ -16,7 +16,7 @@ def _normalize_summary(summary: str | None, max_len: int = 240) -> str | None:
 
 
 def render_digest(date: date, articles: list[Article]) -> str:
-    lines: list[str] = [f"# Robotics & AI Digest — {date.isoformat()}", ""]
+    lines: list[str] = [f"# Robotics & AI Digest \u2014 {date.isoformat()}", ""]
 
     grouped: OrderedDict[str, list[Article]] = OrderedDict()
     for article in articles:
@@ -37,8 +37,9 @@ def render_digest(date: date, articles: list[Article]) -> str:
 
     lines.append("---")
     lines.append(f"Total articles: {len(articles)}")
-    lines.append(f"Number of sources: {len(grouped)}")
-    lines.append(f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"Sources count: {len(grouped)}")
+    generated_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    lines.append(f"Generated at: {generated_at}")
     lines.append("")
 
     return "\n".join(lines)
