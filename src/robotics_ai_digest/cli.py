@@ -18,8 +18,13 @@ from .storage.repository import (
     save_ai_summary,
     upsert_articles,
 )
+from .summarization.cost_estimator import (
+    DEFAULT_EXPECTED_OUTPUT_TOKENS,
+    count_tokens,
+    estimate_api_cost,
+)
 from .summarization.mock_summarizer import MockSummarizer
-from .summarization.openai_summarizer import OpenAISummarizer
+from .summarization.openai_summarizer import OpenAISummarizer, build_summarization_prompt
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     summarize_parser.add_argument("--db", required=True, help="Path to SQLite database")
     summarize_parser.add_argument("--limit", type=int, default=10, help="Maximum number of articles")
     summarize_parser.add_argument("--model", default="gpt-4.1-mini", help="OpenAI model name")
+    summarize_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Estimate token usage/cost only, without API calls or DB writes",
+    )
     summaries_parser = subparsers.add_parser(
         "summaries", help="Show stored AI summaries from the database"
     )
@@ -141,11 +151,6 @@ def handler_digest(args: argparse.Namespace) -> int:
 def handler_summarize(args: argparse.Namespace) -> int:
     load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        summarizer = OpenAISummarizer(model=args.model)
-    else:
-        print("Warning: OPENAI_API_KEY not set. Using MockSummarizer.")
-        summarizer = MockSummarizer()
 
     session_factory = init_db(args.db)
     with session_factory() as session:
@@ -154,6 +159,31 @@ def handler_summarize(args: argparse.Namespace) -> int:
     if not articles:
         print("No articles to summarize.")
         return 0
+
+    estimated_input_tokens = 0
+    expected_output_tokens_total = 0
+    estimated_cost_total = 0.0
+    for article in articles:
+        source_text = article.summary or article.title
+        prompt = build_summarization_prompt(article.title, source_text)
+        estimated_input_tokens += count_tokens(prompt, model=args.model)
+        expected_output_tokens_total += DEFAULT_EXPECTED_OUTPUT_TOKENS
+        estimated_cost_total += estimate_api_cost(prompt, model=args.model)
+
+    print(f"Estimated input tokens: {estimated_input_tokens}")
+    print(f"Estimated output tokens: {expected_output_tokens_total}")
+    print(f"Estimated total tokens: {estimated_input_tokens + expected_output_tokens_total}")
+    print(f"Estimated cost (USD): ${estimated_cost_total:.6f}")
+
+    if args.dry_run:
+        print("Dry-run enabled: no API calls, no database writes.")
+        return 0
+
+    if api_key:
+        summarizer = OpenAISummarizer(model=args.model)
+    else:
+        print("Warning: OPENAI_API_KEY not set. Using MockSummarizer.")
+        summarizer = MockSummarizer()
 
     total = len(articles)
     failures = 0

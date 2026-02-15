@@ -6,6 +6,17 @@ from openai import OpenAI
 
 from .summarizer import Summarizer
 
+SUMMARY_INSTRUCTIONS = (
+    "Tu es un assistant de veille robotique/IA. "
+    "Reponds en JSON strict avec les cles 'summary' et 'bullets'. "
+    "Le resume doit etre neutre, factuel, en francais, entre 80 et 120 mots. "
+    "Donne exactement 3 puces dans 'bullets'."
+)
+
+
+def build_summarization_prompt(title: str, text: str) -> str:
+    return f"Title: {title}\n\nContent:\n{text}"
+
 
 class OpenAISummarizer(Summarizer):
     def __init__(self, model: str = "gpt-4.1-mini"):
@@ -13,18 +24,11 @@ class OpenAISummarizer(Summarizer):
         self.client = OpenAI()
 
     def summarize(self, title: str, text: str) -> dict:
-        instructions = (
-            "Tu es un assistant de veille robotique/IA. "
-            "Réponds en JSON strict avec les clés 'summary' et 'bullets'. "
-            "Le résumé doit être neutre, factuel, en français, entre 80 et 120 mots. "
-            "Donne exactement 3 puces dans 'bullets'."
-        )
-        payload = f"Title: {title}\n\nContent:\n{text}"
-
+        payload = build_summarization_prompt(title, text)
         try:
             response = self.client.responses.create(
                 model=self.model,
-                instructions=instructions,
+                instructions=SUMMARY_INSTRUCTIONS,
                 input=payload,
             )
             content = response.output_text
