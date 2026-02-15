@@ -1,13 +1,25 @@
 import argparse
 from collections import OrderedDict
 from datetime import date
+import json
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 from . import __version__
 from .digest.renderer_md import render_digest
 from .feeds.rss_reader import fetch_rss
 from .storage.db import init_db
-from .storage.repository import get_articles_for_date, get_recent_articles, upsert_articles
+from .storage.repository import (
+    get_articles_for_date,
+    get_articles_missing_ai_summary,
+    get_recent_articles,
+    save_ai_summary,
+    upsert_articles,
+)
+from .summarization.mock_summarizer import MockSummarizer
+from .summarization.openai_summarizer import OpenAISummarizer
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
     digest_parser.add_argument("--db", required=True, help="Path to SQLite database")
     digest_parser.add_argument("--date", required=True, help="Date in YYYY-MM-DD format")
     digest_parser.add_argument("--out", required=True, help="Output directory for markdown digest")
+    summarize_parser = subparsers.add_parser(
+        "summarize", help="Generate AI summaries for articles missing them"
+    )
+    summarize_parser.add_argument("--db", required=True, help="Path to SQLite database")
+    summarize_parser.add_argument("--limit", type=int, default=10, help="Maximum number of articles")
+    summarize_parser.add_argument("--model", default="gpt-4.1-mini", help="OpenAI model name")
+    summaries_parser = subparsers.add_parser(
+        "summaries", help="Show stored AI summaries from the database"
+    )
+    summaries_parser.add_argument("--db", required=True, help="Path to SQLite database")
+    summaries_parser.add_argument("--limit", type=int, default=10, help="Maximum number of summaries")
 
     return parser
 
@@ -115,6 +138,67 @@ def handler_digest(args: argparse.Namespace) -> int:
     return 0
 
 
+def handler_summarize(args: argparse.Namespace) -> int:
+    load_dotenv()
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        summarizer = OpenAISummarizer(model=args.model)
+    else:
+        print("Warning: OPENAI_API_KEY not set. Using MockSummarizer.")
+        summarizer = MockSummarizer()
+
+    session_factory = init_db(args.db)
+    with session_factory() as session:
+        articles = get_articles_missing_ai_summary(session, limit=args.limit)
+
+    if not articles:
+        print("No articles to summarize.")
+        return 0
+
+    total = len(articles)
+    failures = 0
+    for index, article in enumerate(articles, start=1):
+        try:
+            source_text = article.summary or article.title
+            result = summarizer.summarize(article.title, source_text)
+            with session_factory() as session:
+                save_ai_summary(session, article.id, result["summary"], result["bullets"])
+            print(f"[{index}/{total}] summarized article #{article.id}")
+        except Exception as exc:  # noqa: BLE001
+            failures += 1
+            print(f"[{index}/{total}] failed article #{article.id}: {exc}")
+
+    return 1 if failures else 0
+
+
+def handler_summaries(args: argparse.Namespace) -> int:
+    session_factory = init_db(args.db)
+    with session_factory() as session:
+        articles = get_recent_articles(session, limit=args.limit)
+
+    with_summaries = [a for a in articles if a.ai_summary_record is not None]
+    print(f"Showing {len(with_summaries)} AI summaries")
+    if not with_summaries:
+        print("No AI summaries found.")
+        return 0
+
+    for article in with_summaries:
+        record = article.ai_summary_record
+        assert record is not None
+        print(f"- [{article.id}] {article.title}")
+        print(f"  Source: {article.source}")
+        print(f"  Summarized at: {record.summarized_at.isoformat()}")
+        print(f"  Summary: {record.summary_ai}")
+        try:
+            bullets = json.loads(record.bullets_ai)
+        except json.JSONDecodeError:
+            bullets = []
+        if isinstance(bullets, list):
+            for bullet in bullets:
+                print(f"  * {bullet}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -136,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
         return handler_run(args)
     if args.command == "digest":
         return handler_digest(args)
+    if args.command == "summarize":
+        return handler_summarize(args)
+    if args.command == "summaries":
+        return handler_summaries(args)
 
     parser.print_help()
     return 0

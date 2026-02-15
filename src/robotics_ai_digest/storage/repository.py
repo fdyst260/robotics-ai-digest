@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+import json
 from typing import Optional
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from .models import Article
+from .models import Article, ArticleSummary
 
 
 def _parse_datetime(value: str | None) -> datetime | None:
@@ -63,7 +64,7 @@ def upsert_articles(session: Session, articles: list[dict]) -> tuple[int, int]:
 def get_recent_articles(
     session: Session, limit: int = 10, source: Optional[str] = None
 ) -> list[Article]:
-    stmt = select(Article)
+    stmt = select(Article).options(selectinload(Article.ai_summary_record))
     if source:
         stmt = stmt.where(Article.source == source)
     stmt = stmt.order_by(func.coalesce(Article.published, Article.created_at).desc()).limit(limit)
@@ -73,8 +74,38 @@ def get_recent_articles(
 def get_articles_for_date(session: Session, date: date) -> list[Article]:
     stmt = (
         select(Article)
+        .options(selectinload(Article.ai_summary_record))
         .where(Article.published.is_not(None))
         .where(func.date(Article.published) == date.isoformat())
         .order_by(Article.published.desc(), Article.created_at.desc())
     )
     return list(session.scalars(stmt).all())
+
+
+def get_articles_missing_ai_summary(session: Session, limit: int = 10) -> list[Article]:
+    stmt = (
+        select(Article)
+        .outerjoin(ArticleSummary, ArticleSummary.article_id == Article.id)
+        .where(ArticleSummary.id.is_(None))
+        .order_by(func.coalesce(Article.published, Article.created_at).desc())
+        .limit(limit)
+    )
+    return list(session.scalars(stmt).all())
+
+
+def save_ai_summary(session: Session, article_id: int, summary: str, bullets: list[str]) -> None:
+    record = session.scalar(select(ArticleSummary).where(ArticleSummary.article_id == article_id))
+    payload = json.dumps(bullets, ensure_ascii=False)
+    if record is None:
+        record = ArticleSummary(
+            article_id=article_id,
+            summary_ai=summary,
+            bullets_ai=payload,
+            summarized_at=datetime.now(timezone.utc),
+        )
+        session.add(record)
+    else:
+        record.summary_ai = summary
+        record.bullets_ai = payload
+        record.summarized_at = datetime.now(timezone.utc)
+    session.commit()

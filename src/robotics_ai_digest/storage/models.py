@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Text, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -25,4 +25,19 @@ class Article(Base):
         nullable=False,
         server_default=func.now(),
     )
+    ai_summary_record: Mapped["ArticleSummary | None"] = relationship(
+        back_populates="article",
+        uselist=False,
+    )
 
+
+class ArticleSummary(Base):
+    __tablename__ = "article_summaries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id"), unique=True, nullable=False)
+    summary_ai: Mapped[str] = mapped_column(Text, nullable=False)
+    bullets_ai: Mapped[str] = mapped_column(Text, nullable=False)
+    summarized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    article: Mapped[Article] = relationship(back_populates="ai_summary_record")

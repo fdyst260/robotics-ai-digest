@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from datetime import date, datetime, timezone
+import json
 
 from robotics_ai_digest.storage.models import Article
 
@@ -30,9 +31,20 @@ def render_digest(date: date, articles: list[Article]) -> str:
             lines.append(f"- **[{title}]({article.link})**")
             if article.published:
                 lines.append(f"  - Published: {article.published.strftime('%Y-%m-%d %H:%M')}")
-            summary = _normalize_summary(article.summary)
+            ai_record = article.ai_summary_record
+            summary_text = ai_record.summary_ai if ai_record else article.summary
+            summary = _normalize_summary(summary_text)
             if summary:
                 lines.append(f"  - Summary: {summary}")
+            if ai_record and ai_record.bullets_ai:
+                try:
+                    bullets = json.loads(ai_record.bullets_ai)
+                except json.JSONDecodeError:
+                    bullets = []
+                if isinstance(bullets, list):
+                    lines.append("  - Bullets:")
+                    for bullet in bullets:
+                        lines.append(f"    - {bullet}")
         lines.append("")
 
     lines.append("---")
@@ -43,4 +55,3 @@ def render_digest(date: date, articles: list[Article]) -> str:
     lines.append("")
 
     return "\n".join(lines)
-

@@ -1,12 +1,14 @@
+from datetime import date
+
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
 
 from robotics_ai_digest.storage.models import Article, Base
-from datetime import date
-
 from robotics_ai_digest.storage.repository import (
     get_articles_for_date,
+    get_articles_missing_ai_summary,
     get_recent_articles,
+    save_ai_summary,
     upsert_articles,
 )
 
@@ -154,3 +156,32 @@ def test_get_articles_for_date_returns_only_matching_published_day():
 
     assert len(selected) == 1
     assert selected[0].title == "Target date"
+
+
+def test_save_ai_summary_updates_missing_query():
+    engine = create_engine("sqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine, future=True)
+
+    with session_factory() as session:
+        upsert_articles(
+            session,
+            [
+                {
+                    "title": "Needs summary",
+                    "link": "https://example.com/needs",
+                    "guid": "g-needs",
+                    "published": "2025-02-12T08:00:00+00:00",
+                    "summary": "rss",
+                    "source": "Feed A",
+                }
+            ],
+        )
+        missing = get_articles_missing_ai_summary(session, limit=10)
+        assert len(missing) == 1
+        article_id = missing[0].id
+
+    with session_factory() as session:
+        save_ai_summary(session, article_id, "AI summary", ["b1", "b2", "b3"])
+        missing_after = get_articles_missing_ai_summary(session, limit=10)
+        assert missing_after == []
