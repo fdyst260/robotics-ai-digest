@@ -10,7 +10,8 @@ from .models import Base
 def _build_sqlite_url(db_path: str) -> str:
     if db_path == ":memory:":
         return "sqlite:///:memory:"
-    return f"sqlite:///{db_path}"
+    # Replace backslashes to build a valid SQLite URL on Windows.
+    return f"sqlite:///{db_path.replace(chr(92), '/')}"
 
 
 def init_db(db_path: str) -> sessionmaker[Session]:

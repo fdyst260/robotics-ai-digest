@@ -42,13 +42,14 @@ def fetch_rss(urls: list[str], timeout: int = 15) -> list[dict]:
 
         source_name = parsed.feed.get("title", url)
         for entry in parsed.entries:
-            guid = entry.get("id") or entry.get("guid") or entry.get("link")
             link = entry.get("link")
-            dedupe_key = guid or link
-            if dedupe_key and dedupe_key in seen:
+            if not link:
                 continue
-            if dedupe_key:
-                seen.add(dedupe_key)
+            guid = entry.get("id") or entry.get("guid") or link
+            dedupe_key = guid or link
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
 
             published = _to_iso8601(entry.get("published_parsed") or entry.get("updated_parsed"))
 

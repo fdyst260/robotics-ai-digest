@@ -37,7 +37,6 @@ def upsert_articles(session: Session, articles: list[dict]) -> tuple[int, int]:
         link = item.get("link")
         guid = item.get("guid")
         if not link:
-            duplicate_count += 1
             continue
         if link in seen_links or (guid and guid in seen_guids):
             duplicate_count += 1
