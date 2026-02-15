@@ -14,7 +14,7 @@ if ($dbDirectory -and -not (Test-Path $dbDirectory)) {
 }
 
 Write-Host "Ingesting feeds into $DbPath ..."
-python -m robotics_ai_digest ingest --db $DbPath --rss @Rss
+python -m robotics_ai_digest ingest --db $DbPath --rss $Rss
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
@@ -27,4 +27,3 @@ if ($Source) {
     python -m robotics_ai_digest list --db $DbPath --limit $Limit
 }
 exit $LASTEXITCODE
-
